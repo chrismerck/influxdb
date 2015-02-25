@@ -83,7 +83,7 @@ func createBatch(nPoints int, database, retention, measurement string, tags map[
 // the testing is marked as failed.
 //
 // This function returns a slice of nodes, the first of which will be the leader.
-func createCombinedNodeCluster(t *testing.T, testName string, nNodes, basePort int) cluster {
+func createCombinedNodeCluster(t *testing.T, testName string, nNodes, basePort int, baseConfig *main.Config) cluster {
 	t.Logf("Creating cluster of %d nodes for test %s", nNodes, testName)
 	if nNodes < 1 {
 		t.Fatalf("Test %s: asked to create nonsense cluster", testName)
@@ -103,7 +103,10 @@ func createCombinedNodeCluster(t *testing.T, testName string, nNodes, basePort i
 	_ = os.RemoveAll(tmpDataDir)
 
 	// Create the first node, special case.
-	c := main.NewConfig()
+	c := baseConfig
+	if c == nil {
+		c = main.NewConfig()
+	}
 	c.Broker.Dir = filepath.Join(tmpBrokerDir, strconv.Itoa(basePort))
 	c.Data.Dir = filepath.Join(tmpDataDir, strconv.Itoa(basePort))
 	c.Broker.Port = basePort
@@ -410,7 +413,7 @@ func Test_ServerSingleIntegration(t *testing.T) {
 	basePort := 8090
 	testName := "single node"
 	now := time.Now().UTC()
-	nodes := createCombinedNodeCluster(t, "single node", nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, "single node", nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -455,7 +458,7 @@ func Test_Server3NodeIntegration(t *testing.T) {
 	basePort := 8190
 	testName := "3 node"
 	now := time.Now().UTC()
-	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -502,7 +505,7 @@ func Test_Server5NodeIntegration(t *testing.T) {
 	basePort := 8290
 	testName := "5 node"
 	now := time.Now().UTC()
-	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -548,7 +551,7 @@ func Test_ServerSingleLargeBatchIntegration(t *testing.T) {
 	nNodes := 1
 	basePort := 8390
 	testName := "single node large batch"
-	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -563,7 +566,7 @@ func Test_Server3NodeLargeBatchIntegration(t *testing.T) {
 	nNodes := 3
 	basePort := 8490
 	testName := "3 node large batch"
-	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -579,7 +582,7 @@ func Test_Server5NodeLargeBatchIntegration(t *testing.T) {
 	nNodes := 5
 	basePort := 8590
 	testName := "5 node large batch"
-	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -596,7 +599,7 @@ func Test_ServerMultiLargeBatchIntegration(t *testing.T) {
 	nBatches := 5
 	basePort := 8690
 	testName := "single node multi batch"
-	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort)
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
