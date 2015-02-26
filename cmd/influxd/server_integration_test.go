@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -267,7 +268,7 @@ func write(t *testing.T, testName string, nodes cluster, data string) {
 		t.Fatalf("Write to database failed.  Unexpected status code.  expected: %d, actual %d", http.StatusOK, resp.StatusCode)
 	}
 
-	index, err := strconv.ParseInt(resp.Header.Get("X-InfluxDB-Index"), 10, 64)
+	index, err := strconv.ParseUint(resp.Header.Get("X-InfluxDB-Index"), 10, 64)
 	if err != nil {
 		t.Fatalf("Couldn't get index. header: %s,  err: %s.", resp.Header.Get("X-InfluxDB-Index"), err)
 	}
@@ -319,12 +320,28 @@ func simpleQuery(t *testing.T, testName string, nodes cluster, query string, exp
 	}
 }
 
-func wait(t *testing.T, testName string, nodes cluster, index int64) {
+func index(t *testing.T, testName string, nodes cluster) uint64 {
+	// The first node should be the leader so ask him for the index
+	u := urlFor(nodes[0].url, "", nil)
+	resp, err := http.Get(u.String())
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, err := strconv.ParseUint(string(body), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return i
+}
+
+func wait(t *testing.T, testName string, nodes cluster, index uint64) {
 	// Wait for the index to sync up
 	var wg sync.WaitGroup
 	wg.Add(len(nodes))
 	for _, n := range nodes {
-		go func(t *testing.T, testName string, nodes cluster, u *url.URL, index int64) {
+		go func(t *testing.T, testName string, nodes cluster, u *url.URL, index uint64) {
 			u = urlFor(u, fmt.Sprintf("wait/%d", index), nil)
 			t.Logf("Test name %s: wait on node %s for index %d", testName, u, index)
 			resp, err := http.Get(u.String())
@@ -607,4 +624,64 @@ func Test_ServerMultiLargeBatchIntegration(t *testing.T) {
 		write(t, testName, nodes, createBatch(batchSize, "foo", "bar", "cpu", map[string]string{"host": "server01"}))
 	}
 	simpleCountQuery(t, testName, nodes, `select count(value) from "foo"."bar".cpu`, "value", batchSize*int64(nBatches))
+}
+
+func Test_ServerSingleGraphiteIntegration(t *testing.T) {
+	//t.Skip()
+	nNodes := 1
+	basePort := 8090
+	testName := "graphite integration"
+	now := time.Now().UTC().Round(time.Millisecond)
+	c := main.NewConfig()
+	g := main.Graphite{
+		Enabled:  true,
+		Database: "graphite",
+		Protocol: "TCP",
+	}
+	c.Graphites = append(c.Graphites, g)
+
+	t.Logf("Graphite Connection String: %s\n", g.ConnectionString(c.BindAddress))
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, c)
+
+	createDatabase(t, testName, nodes, "graphite")
+	createRetentionPolicy(t, testName, nodes, "graphite", "raw")
+
+	// Connect to the graphite endpoint we just spun up
+	conn, err := net.Dial("tcp", g.ConnectionString(c.BindAddress))
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	// Get the current index
+	i := index(t, testName, nodes)
+
+	t.Log("Writing data")
+	data := []byte(`cpu 50.554 `)
+	data = append(data, []byte(fmt.Sprintf("%d", now.UnixNano()/1000000))...)
+	data = append(data, '\n')
+	_, err = conn.Write(data)
+	conn.Close()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	// Wait for sync
+	wait(t, testName, nodes, i+4)
+
+	expectedResults := client.Results{
+		Results: []client.Result{
+			{Series: []influxql.Row{
+				{
+					Name:    "cpu",
+					Columns: []string{"time", "cpu"},
+					Values: [][]interface{}{
+						{now.Format(time.RFC3339Nano), json.Number("50.544")},
+					},
+				}}},
+		},
+	}
+
+	simpleQuery(t, testName, nodes[:1], `select * from "graphite"."raw".cpu`, expectedResults)
 }
