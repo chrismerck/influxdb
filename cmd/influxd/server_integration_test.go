@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -50,13 +51,6 @@ type node struct {
 // cluster represents a multi-node cluster.
 type cluster []*node
 
-func (c cluster) Close() {
-	for _, n := range c {
-		n.broker.Close()
-		n.server.Close()
-	}
-}
-
 // createBatch returns a JSON string, representing the request body for a batch write. The timestamp
 // simply increases and the value is a random integer.
 func createBatch(nPoints int, database, retention, measurement string, tags map[string]string) string {
@@ -92,11 +86,7 @@ func createBatch(nPoints int, database, retention, measurement string, tags map[
 //
 // This function returns a slice of nodes, the first of which will be the leader.
 func createCombinedNodeCluster(t *testing.T, testName string, nNodes, basePort int, baseConfig *main.Config) cluster {
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("Recovered in createCombinedNode while runnng test %s, err: %s", testName, r)
-		}
-	}()
+	log.Println("testName: ", testName)
 
 	t.Logf("Creating cluster of %d nodes for test %s", nNodes, testName)
 	if nNodes < 1 {
@@ -443,8 +433,7 @@ func Test_ServerSingleIntegration(t *testing.T) {
 	basePort := 8090
 	testName := "single node"
 	now := time.Now().UTC()
-	nodes := createCombinedNodeCluster(t, "single node", nNodes, basePort, nil)
-	defer nodes.Close()
+	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -490,7 +479,6 @@ func Test_Server3NodeIntegration(t *testing.T) {
 	testName := "3 node"
 	now := time.Now().UTC()
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -538,7 +526,6 @@ func Test_Server5NodeIntegration(t *testing.T) {
 	testName := "5 node"
 	now := time.Now().UTC()
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -585,7 +572,6 @@ func Test_ServerSingleLargeBatchIntegration(t *testing.T) {
 	basePort := 8390
 	testName := "single node large batch"
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -601,7 +587,6 @@ func Test_Server3NodeLargeBatchIntegration(t *testing.T) {
 	basePort := 8490
 	testName := "3 node large batch"
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -618,7 +603,6 @@ func Test_Server5NodeLargeBatchIntegration(t *testing.T) {
 	basePort := 8590
 	testName := "5 node large batch"
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -636,7 +620,6 @@ func Test_ServerMultiLargeBatchIntegration(t *testing.T) {
 	basePort := 8690
 	testName := "single node multi batch"
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, nil)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "foo")
 	createRetentionPolicy(t, testName, nodes, "foo", "bar")
@@ -649,7 +632,7 @@ func Test_ServerMultiLargeBatchIntegration(t *testing.T) {
 func Test_ServerSingleGraphiteIntegration(t *testing.T) {
 	//t.Skip()
 	nNodes := 1
-	basePort := 8090
+	basePort := 8790
 	testName := "graphite integration"
 	now := time.Now().UTC().Round(time.Millisecond)
 	c := main.NewConfig()
@@ -662,7 +645,6 @@ func Test_ServerSingleGraphiteIntegration(t *testing.T) {
 
 	t.Logf("Graphite Connection String: %s\n", g.ConnectionString(c.BindAddress))
 	nodes := createCombinedNodeCluster(t, testName, nNodes, basePort, c)
-	defer nodes.Close()
 
 	createDatabase(t, testName, nodes, "graphite")
 	createRetentionPolicy(t, testName, nodes, "graphite", "raw")
@@ -678,7 +660,7 @@ func Test_ServerSingleGraphiteIntegration(t *testing.T) {
 	i := index(t, testName, nodes)
 
 	t.Log("Writing data")
-	data := []byte(`cpu 50.554 `)
+	data := []byte(`cpu 12.345 `)
 	data = append(data, []byte(fmt.Sprintf("%d", now.UnixNano()/1000000))...)
 	data = append(data, '\n')
 	_, err = conn.Write(data)
@@ -698,7 +680,7 @@ func Test_ServerSingleGraphiteIntegration(t *testing.T) {
 					Name:    "cpu",
 					Columns: []string{"time", "cpu"},
 					Values: [][]interface{}{
-						{now.Format(time.RFC3339Nano), json.Number("50.544")},
+						{now.Format(time.RFC3339Nano), json.Number("12.345")},
 					},
 				}}},
 		},
